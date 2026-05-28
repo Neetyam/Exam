@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Result Management - Admin Dashboard</title>
+    <!-- Bootstrap CSS & Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    
+    <style>
+        :root {
+            --primary: #2563EB;
+            --sidebar-bg: #0F172A;
+            --bg-canvas: #F8FAFC;
+            --card-bg: #FFFFFF;
+            --border-color: #E2E8F0;
+            --text-primary: #0F172A;
+            --text-secondary: #64748B;
+            --success: #22C55E;
+            --warning: #F59E0B;
+            --danger: #EF4444;
+            --sidebar-width: 260px;
+            --transition-smooth: all 0.25s ease;
+        }
+
+        body {
+            background-color: var(--bg-canvas);
+            color: var(--text-secondary);
+            font-family: 'Inter', sans-serif !important;
+            font-size: 14px;
+            min-height: 100vh;
+        }
+
+        .main-content {
+            margin-left: var(--sidebar-width);
+            padding: 2rem;
+            transition: var(--transition-smooth);
+        }
+
+        .table-responsive {
+            background: #ffffff;
+            border-radius: 8px;
+        }
+
+        .table tbody tr {
+            transition: var(--transition-smooth);
+        }
+
+        .table tbody tr:hover {
+            background-color: rgba(37, 99, 235, 0.02) !important;
+        }
+
+        @media (max-width: 991.98px) {
+            .main-content {
+                margin-left: 0;
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Include Sidebar Fragment -->
+    <div th:replace="~{admin/fragments :: sidebar('results')}"></div>
+
+    <main class="main-content">
+        <!-- Page Header Row -->
+        <header class="d-flex flex-wrap align-items-center justify-content-between pb-3 mb-4 border-bottom">
+            <div>
+                <h1 class="h2 mb-1">Result Management</h1>
+                <p class="text-meta small mb-0">Generate and download evaluated student marksheets</p>
+            </div>
+            
+            <div class="d-flex align-items-center gap-3 mt-3 mt-md-0">
+                <!-- PDF Download Trigger -->
+                <a th:href="@{/admin/results/pdf(subject=${selectedSubject},semester=${selectedSemester},division=${selectedDivision})}" class="btn btn-outline-primary d-inline-flex align-items-center gap-2 fw-semibold">
+                    <i class="bi bi-download"></i> Download PDF
+                </a>
+                
+                <div class="profile-avatar bg-primary text-white" style="width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border-radius: 6px; font-weight: 700;" th:text="${#strings.substring(adminName, 0, 1)}">S</div>
+            </div>
+        </header>
+
+        <!-- Filter Card -->
+        <div class="card border-0 shadow-sm rounded-3 bg-white p-3 mb-4">
+            <form th:action="@{/admin/results/filter}" method="post" class="row g-3 align-items-end">
+                <!-- Subject dropdown -->
+                <div class="col-md-3">
+                    <label class="label-custom small text-muted mb-2 d-block">Subject</label>
+                    <select class="form-select py-2 text-dark fw-medium" name="subject" required>
+                        <option value="">Select Subject</option>
+                        <option th:each="subj : ${distinctSubjects}" 
+                                th:value="${subj}" 
+                                th:text="${subj}"
+                                th:selected="${subj == selectedSubject}"></option>
+                    </select>
+                </div>
+                <!-- Semester dropdown -->
+                <div class="col-md-3">
+                    <label class="label-custom small text-muted mb-2 d-block">Semester</label>
+                    <select class="form-select py-2 text-dark fw-medium" name="semester" required>
+                        <option value="">Select Semester</option>
+                        <option th:each="sem : ${distinctSemesters}" 
+                                th:value="${sem}" 
+                                th:text="${'Semester ' + sem}"
+                                th:selected="${sem == selectedSemester}"></option>
+                    </select>
+                </div>
+                <!-- Division dropdown -->
+                <div class="col-md-3">
+                    <label class="label-custom small text-muted mb-2 d-block">Division (Optional)</label>
+                    <select class="form-select py-2 text-dark fw-medium" name="division">
+                        <option value="">All Divisions</option>
+                        <option th:each="divisionItem : ${distinctDivisions}" 
+                                th:value="${divisionItem}" 
+                                th:text="${'Division ' + divisionItem}"
+                                th:selected="${divisionItem == selectedDivision}"></option>
+                    </select>
+                </div>
+                <!-- Filter action button -->
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary w-100 fw-semibold py-2">
+                        <i class="bi bi-funnel me-2"></i>Filter
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Data Card & Table -->
+        <div class="card border-0 shadow-sm rounded-3 bg-white p-4">
+            <!-- Table Header Row containing search input -->
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-3">
+                <h3 class="h4 text-dark m-0">Filtered Results</h3>
+                <div class="input-group" style="width: 320px;">
+                    <span class="input-group-text bg-light border-end-0 text-secondary"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control border-start-0 bg-light text-secondary small" id="tableSearch" placeholder="Search by name or enrollment...">
+                </div>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle mb-0 text-dark" id="resultsTable">
+                    <thead class="table-light sticky-top">
+                        <tr class="label-custom small">
+                            <th class="py-3">Roll No</th>
+                            <th class="py-3">Enrollment No</th>
+                            <th class="py-3">Student Name</th>
+                            <th class="py-3">Division</th>
+                            <th class="py-3">Subject</th>
+                            <th class="py-3 text-end">Marks</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-secondary">
+                        <tr th:each="res, stat : ${results}" class="border-bottom">
+                            <td class="py-3 fw-semibold text-dark" th:text="${stat.count}">1</td>
+                            <td class="py-3">
+                                <span class="fw-semibold text-primary" th:text="${res.submission?.student?.enrollmentNo ?: 'N/A'}"></span>
+                            </td>
+                            <td class="py-3 fw-semibold text-dark" th:text="${res.submission?.student?.name ?: '-'}"></td>
+                            <td class="py-3" th:text="${res.submission?.student?.division ?: '-'}"></td>
+                            <td class="py-3" th:text="${res.submission?.paper?.subject ?: '-'}"></td>
+                            <td class="py-3 fw-bold text-dark text-end" th:text="${res.obtainedMarks != null ? (res.obtainedMarks % 1 == 0 ? res.obtainedMarks.intValue() : res.obtainedMarks) : '0'}">0</td>
+                        </tr>
+                        
+                        <!-- Empty State Illustration -->
+                        <tr th:if="${results == null or results.isEmpty()}">
+                            <td colspan="6" class="text-center py-5 text-muted">
+                                <div class="bg-primary bg-opacity-10 text-primary d-inline-flex align-items-center justify-content-center mb-3" style="width: 56px; height: 56px; border-radius: 50%;">
+                                    <i class="bi bi-inbox fs-3 text-primary"></i>
+                                </div>
+                                <h6 class="fw-bold text-dark mb-1">No results found for selected filters</h6>
+                                <p class="small text-secondary mb-0">Try adjusting your filter criteria</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Client-side search functionality for results table
+        document.getElementById('tableSearch').addEventListener('keyup', function() {
+            let filter = this.value.toLowerCase();
+            let rows = document.querySelectorAll('#resultsTable tbody tr:not(:last-child)');
+            
+            let emptyStateRow = document.querySelector('#resultsTable tbody tr td[colspan="6"]');
+            if (emptyStateRow && rows.length === 0) return; // table is already empty
+            
+            rows.forEach(row => {
+                let text = row.textContent.toLowerCase();
+                if (text.includes(filter)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
