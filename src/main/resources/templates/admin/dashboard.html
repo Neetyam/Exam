@@ -496,7 +496,8 @@
                 }
 
                 // Parse ISO LocalDateTime (Thymeleaf outputs like 2026-05-27T06:42:00)
-                const startTime = new Date(activationTimeStr).getTime();
+                // Appending 'Z' ensures the browser parses the date in UTC to align with the server's timezone, avoiding premature expiration.
+                const startTime = new Date(activationTimeStr.endsWith('Z') ? activationTimeStr : activationTimeStr + 'Z').getTime();
                 const durationMs = durationMinutes * 60 * 1000;
                 const endTime = startTime + durationMs;
 
