@@ -143,17 +143,31 @@ public class LoginController {
         return "redirect:/student/rules?error=Exam is not available yet. Please wait.";
     }
 
-    @GetMapping("/admin-login")
+    @GetMapping({"/admin-login", "/admin/login", "/admin-login/", "/admin/login/"})
     public String adminLogin() {
         return "auth/admin_login";
     }
 
-    @org.springframework.web.bind.annotation.PostMapping("/admin-login")
-    public String performAdminLogin(String adminName, String password, jakarta.servlet.http.HttpSession session) {
+    @org.springframework.web.bind.annotation.PostMapping({"/admin-login", "/admin/login", "/admin-login/", "/admin/login/"})
+    public String performAdminLogin(
+            String adminName, 
+            String password, 
+            jakarta.servlet.http.HttpSession session, 
+            jakarta.servlet.http.HttpServletRequest request) {
+        
         System.out.println("DEBUG: performAdminLogin called with adminName=[" + adminName + "], password=[" + password + "]");
+        
+        String redirectUrl = request.getRequestURI();
+        if (redirectUrl != null && redirectUrl.endsWith("/")) {
+            redirectUrl = redirectUrl.substring(0, redirectUrl.length() - 1);
+        }
+        if (redirectUrl == null || redirectUrl.isEmpty()) {
+            redirectUrl = "/admin-login";
+        }
+
         if (adminName == null || password == null) {
             System.out.println("DEBUG: adminName or password is null!");
-            return "redirect:/admin-login?error=invalid_credentials";
+            return "redirect:" + redirectUrl + "?error=invalid_credentials";
         }
         
         try {
@@ -200,6 +214,14 @@ public class LoginController {
         }
 
         System.out.println("DEBUG: Login failed, redirecting back with error.");
-        return "redirect:/admin-login?error=invalid_credentials";
-    } 
+        return "redirect:" + redirectUrl + "?error=invalid_credentials";
+    }
+
+    @GetMapping({"/admin/logout", "/admin-logout", "/admin/logout/", "/admin-logout/"})
+    public String adminLogout(jakarta.servlet.http.HttpSession session) {
+        if (session != null) {
+            session.invalidate();
+        }
+        return "redirect:/admin-login";
+    }
 }

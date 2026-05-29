@@ -61,6 +61,14 @@ public class AdminDashboardController {
     @Autowired
     private University.exam.repository.ExamRepository examRepository;
 
+    @GetMapping({"", "/"})
+    public String adminRoot(HttpSession session) {
+        if (session.getAttribute("loggedInAdmin") != null) {
+            return "redirect:/admin/dashboard";
+        }
+        return "redirect:/admin-login";
+    }
+
     @GetMapping("/dashboard")
     public String dashboard(Model model) {
         addAdminAttributes(model);
