@@ -254,10 +254,12 @@
     const type = document.getElementById('type').value;
     let remainingSeconds = parseInt(document.getElementById('remainingSeconds').value);
     const questionsContainer = document.getElementById('questionsContainer');
+    window.lastActiveQuestionId = null;
+    window.isNavigating = false;
     
     // Prevent leaving page
     window.onbeforeunload = function() {
-        if(remainingSeconds > 0) return "You have an ongoing exam. Progress will be lost.";
+        if(remainingSeconds > 0 && !window.isNavigating) return "You have an ongoing exam. Progress will be lost.";
     };
 
     // Load Questions
@@ -305,7 +307,7 @@
                 }
 
                 const savedAns = q.savedAnswer ? q.savedAnswer : '';
-                const optionalLabel = q.isOptional ? '<span class="badge bg-warning text-dark me-2 shadow-sm">OR</span>' : '';
+                const optionalLabel = '';
                 
                 let answerTag = '';
                 if (q.marks <= 2) answerTag = '<span class="badge bg-info text-dark ms-2" style="font-size: 0.7rem;">Short Answer</span>';
@@ -322,23 +324,37 @@
                             </div>
                         </div>
                         <div class="question-text">${optionalLabel}${q.text}${answerTag}</div>
-                        <textarea class="answer-area" data-qid="${q.id}" placeholder="Type your detailed theory answer here...">${savedAns}</textarea>
+                        <textarea class="answer-area" data-qid="${q.id}" placeholder="Type your detailed theory answer here..."></textarea>
                         <div class="save-status" id="status-${q.id}"></div>
                     </div>
                 `;
             });
             
             if (currentGroup !== '') {
-                html += `</div></div>`; // Close final section card
+                html += `</div></div>`; // Close previous section card
             }
             
             questionsContainer.innerHTML = html;
-            
-            // Auto-save every 15 seconds (as per prompt intervals)
-            setInterval(saveAllAnswers, 15000); 
 
-            // Immediate save feedback on typing (debounce)
+            // Programmatically populate saved answer values to avoid raw HTML string literal parsing breakdown
+            questions.forEach(q => {
+                const textarea = document.querySelector(`textarea[data-qid="${q.id}"]`);
+                if (textarea) {
+                    textarea.value = q.savedAnswer ? q.savedAnswer : '';
+                }
+            });
+            
+            // Auto-save every 5 seconds (as per prompt intervals)
+            setInterval(saveAllAnswers, 5000); 
+
+            // Track active question on focus and input
             document.querySelectorAll('.answer-area').forEach(textarea => {
+                textarea.addEventListener('focus', function() {
+                    window.lastActiveQuestionId = this.getAttribute('data-qid');
+                });
+                textarea.addEventListener('input', function() {
+                    window.lastActiveQuestionId = this.getAttribute('data-qid');
+                });
                 textarea.addEventListener('input', debounce(function() {
                     saveAnswer(this.getAttribute('data-qid'), this.value);
                 }, 3000));
@@ -365,9 +381,13 @@
 
     async function saveAllAnswers() {
         if(remainingSeconds <= 0) return;
-        document.querySelectorAll('.answer-area').forEach(ta => {
-            saveAnswer(ta.getAttribute('data-qid'), ta.value);
-        });
+        const promises = Array.from(document.querySelectorAll('.answer-area')).map(ta => 
+            saveAnswer(ta.getAttribute('data-qid'), ta.value)
+        );
+        if (window.saveAllCanvasesImmediately) {
+            promises.push(window.saveAllCanvasesImmediately());
+        }
+        return Promise.all(promises);
     }
 
     async function saveAnswer(questionId, answer) {
@@ -375,7 +395,13 @@
         if(statusEl) statusEl.innerHTML = '<span class="status-saving">Saving...</span>';
         
         try {
-            const body = { questionId, answer };
+            const body = { 
+                questionId, 
+                answer,
+                remainingSeconds: remainingSeconds,
+                currentSection: 0,
+                currentQuestionId: window.lastActiveQuestionId || questionId
+            };
             if (type === 'paper') body.submissionId = attemptId;
             else body.attemptId = attemptId;
 
@@ -435,10 +461,14 @@
     }
 
     async function submitExam() {
+        window.isNavigating = true;
         document.querySelectorAll('.answer-area').forEach(ta => ta.disabled = true);
         const finalSave = Array.from(document.querySelectorAll('.answer-area')).map(ta => 
             saveAnswer(ta.getAttribute('data-qid'), ta.value)
         );
+        if (window.saveAllCanvasesImmediately) {
+            finalSave.push(window.saveAllCanvasesImmediately());
+        }
         await Promise.all(finalSave);
         
         try {
@@ -457,153 +487,28 @@
         }
     }
 
+    // Handle save before browser unload using sendBeacon
+    window.addEventListener('unload', function() {
+        if (remainingSeconds > 0 && !window.isNavigating) {
+            document.querySelectorAll('.answer-area').forEach(ta => {
+                const body = {
+                    questionId: ta.getAttribute('data-qid'),
+                    answer: ta.value,
+                    remainingSeconds: remainingSeconds,
+                    currentSection: 0,
+                    currentQuestionId: window.lastActiveQuestionId || ta.getAttribute('data-qid')
+                };
+                if (type === 'paper') body.submissionId = attemptId;
+                else body.attemptId = attemptId;
+
+                const blob = new Blob([JSON.stringify(body)], { type: 'application/json' });
+                navigator.sendBeacon('/api/answer/save', blob);
+            });
+        }
+    });
+
     window.onload = loadQuestions;
 </script>
-
-<!-- Shape Builder Modal -->
-<div class="modal fade" id="shapeBuilderModal" tabindex="-1" aria-labelledby="shapeBuilderModalLabel" aria-hidden="true" style="z-index: 9999;">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content border-0 rounded-4 shadow-lg">
-      <div class="modal-header text-white py-3" style="background-color: #6f42c1;">
-        <h5 class="modal-title fw-bold" id="shapeBuilderModalLabel"><i class="fas fa-shapes me-2"></i> Insert / Edit Shape</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body p-4" style="background-color: #f8fafc;">
-        <form id="shapeBuilderForm">
-          <div class="row g-4">
-            <!-- Left Side: Customization Form -->
-            <div class="col-md-7">
-              <div class="card border-0 rounded-3 shadow-sm p-3 bg-white mb-3">
-                <h6 class="fw-bold mb-3 text-dark border-bottom pb-2"><i class="fas fa-sliders-h me-1 text-primary"></i> Shape Settings</h6>
-                
-                <div class="row g-3">
-                  <!-- Shape Type -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Shape Type</label>
-                    <select id="shapeType" class="form-select border-2">
-                      <option value="rect">Rectangle</option>
-                      <option value="circle">Circle</option>
-                      <option value="arrow">Arrow (Right)</option>
-                      <option value="line">Line (Horizontal)</option>
-                    </select>
-                  </div>
-                  
-                  <!-- Text Content -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Text Content</label>
-                    <input type="text" id="shapeText" class="form-control border-2" placeholder="e.g. Process, Node, Start">
-                  </div>
-                  
-                  <!-- Fill Color -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Fill Color</label>
-                    <select id="shapeFillColor" class="form-select border-2">
-                      <option value="#ebf8ff">Light Blue</option>
-                      <option value="#e6fffa">Light Teal</option>
-                      <option value="#f0fff4">Light Green</option>
-                      <option value="#fffaf0">Light Orange</option>
-                      <option value="#fff5f5">Light Red</option>
-                      <option value="#faf5ff">Light Purple</option>
-                      <option value="#ffffff">White</option>
-                      <option value="none">Transparent</option>
-                    </select>
-                  </div>
-                  
-                  <!-- Border/Line Color -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Border Color</label>
-                    <select id="shapeBorderColor" class="form-select border-2">
-                      <option value="#3182ce">Blue</option>
-                      <option value="#319795">Teal</option>
-                      <option value="#38a169">Green</option>
-                      <option value="#dd6b20">Orange</option>
-                      <option value="#e53e3e">Red</option>
-                      <option value="#805ad5">Purple</option>
-                      <option value="#2d3748">Dark Gray</option>
-                    </select>
-                  </div>
-
-                  <!-- Border Thickness -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Border Thickness</label>
-                    <select id="shapeBorderThickness" class="form-select border-2">
-                      <option value="1">Thin (1px)</option>
-                      <option value="3" selected>Medium (3px)</option>
-                      <option value="5">Thick (5px)</option>
-                    </select>
-                  </div>
-
-                  <!-- Border Style -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Border Style</label>
-                    <select id="shapeBorderStyle" class="form-select border-2">
-                      <option value="solid">Solid</option>
-                      <option value="dashed">Dashed</option>
-                      <option value="dotted">Dotted</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div class="card border-0 rounded-3 shadow-sm p-3 bg-white">
-                <h6 class="fw-bold mb-3 text-dark border-bottom pb-2"><i class="fas fa-text-height me-1 text-primary"></i> Typography & Sizing</h6>
-                <div class="row g-3">
-                  <!-- Text Font Size -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Font Size</label>
-                    <select id="shapeFontSize" class="form-select border-2">
-                      <option value="12px">Small (12px)</option>
-                      <option value="16px" selected>Medium (16px)</option>
-                      <option value="20px">Large (20px)</option>
-                    </select>
-                  </div>
-
-                  <!-- Text Color -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Font Color</label>
-                    <select id="shapeTextColor" class="form-select border-2">
-                      <option value="#2d3748">Dark Gray</option>
-                      <option value="#ffffff">White</option>
-                      <option value="#3182ce">Blue</option>
-                      <option value="#38a169">Green</option>
-                      <option value="#e53e3e">Red</option>
-                    </select>
-                  </div>
-
-                  <!-- Shape Width -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Width (px)</label>
-                    <input type="number" id="shapeWidth" class="form-control border-2" value="150" min="40" max="800">
-                  </div>
-
-                  <!-- Shape Height -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Height (px)</label>
-                    <input type="number" id="shapeHeight" class="form-control border-2" value="80" min="40" max="600">
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Right Side: Live Interactive Preview -->
-            <div class="col-md-5">
-              <div class="card border-0 rounded-3 shadow-sm p-3 bg-white h-100 d-flex flex-column">
-                <h6 class="fw-bold mb-3 text-dark border-bottom pb-2"><i class="fas fa-eye me-1 text-success"></i> Live Preview</h6>
-                <div class="flex-grow-1 d-flex align-items-center justify-content-center border rounded-3 p-3" style="background-color: #fafbfc; min-height: 200px;" id="shapeLivePreviewContainer">
-                  <!-- Live SVG gets injected here -->
-                </div>
-              </div>
-            </div>
-          </div>
-        </form>
-      </div>
-      <div class="modal-footer border-0 p-3 bg-white justify-content-end gap-2">
-        <button type="button" class="btn btn-light border fw-bold px-4" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" id="btnInsertShapeSubmit" class="btn btn-primary fw-bold px-4" style="background-color: #6f42c1; border-color: #6f42c1;">Insert Shape</button>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- Drawing Canvas JS Engine -->
 <script src="/js/canvas.js"></script>

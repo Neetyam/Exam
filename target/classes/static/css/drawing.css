@@ -233,3 +233,121 @@ body.dark-theme .canvas-wrapper.grid-bg {
         linear-gradient(to right, #1e293b 1px, transparent 1px),
         linear-gradient(to bottom, #1e293b 1px, transparent 1px);
 }
+
+/* Custom right-click context menu styles */
+.custom-context-menu {
+    border-radius: 12px;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    padding: 8px 0;
+    min-width: 200px;
+    font-family: 'Outfit', sans-serif;
+    animation: ctxFadeIn 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes ctxFadeIn {
+    from { opacity: 0; transform: scale(0.95) translateY(-5px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.context-item-btn {
+    width: 100%;
+    border: none;
+    background: transparent;
+    text-align: left;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #334155;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.context-item-btn:hover {
+    background-color: #f1f5f9;
+    color: #4f46e5;
+}
+
+.context-item-btn.text-danger:hover {
+    background-color: #fef2f2;
+    color: #ef4444;
+}
+
+.context-divider {
+    height: 1px;
+    background: #f1f5f9;
+    margin: 6px 0;
+}
+
+.color-dot {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.color-dot:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+}
+
+/* Dark mode compatibility */
+body.dark-theme .custom-context-menu {
+    background: #1e293b;
+    border-color: #334155;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+body.dark-theme .context-item-btn {
+    color: #cbd5e1;
+}
+
+body.dark-theme .context-item-btn:hover {
+    background-color: #334155;
+    color: #a5b4fc;
+}
+
+body.dark-theme .context-item-btn.text-danger:hover {
+    background-color: rgba(239, 68, 68, 0.15);
+}
+
+body.dark-theme .context-divider {
+    background: #334155;
+}
+
+.drawing-select {
+    background-color: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #475569;
+    border-radius: 6px;
+    padding: 4px 24px 4px 10px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    height: 36px;
+    outline: none;
+    transition: all 0.15s ease;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23f8fafc'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2.5' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 12px;
+}
+
+.drawing-select:hover {
+    background-color: #334155;
+    border-color: #64748b;
+}
+
+.drawing-select:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+}
+
+/* Hide native calendar picker/dropdown arrow inside drawing-select datalist inputs */
+.drawing-select::-webkit-calendar-picker-indicator {
+    display: none !important;
+}
+

@@ -611,7 +611,7 @@
             if (response.ok) {
                 const data = await response.json();
                 const waitingMsg = document.getElementById('waitingMessage');
-                if (data.status === "ACTIVE") {
+                if (data.status === "ACTIVE" || data.status === "PUBLISHED") {
                     isExamActive = true;
                     
                     // Show "Exam is now available" in green active-alert style
@@ -632,6 +632,8 @@
                             setTimeout(closeToast, 8000);
                         }
                     }
+                } else if (data.status === "ENDED") {
+                    window.location.href = "/student/rules";
                 } else {
                     isExamActive = false;
                     

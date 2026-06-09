@@ -1,0 +1,42 @@
+databases:
+  - name: exam-db
+    plan: free
+    databaseName: exam_db
+    user: postgres
+
+services:
+  - type: web
+    name: exam-app
+    env: docker
+    plan: free
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: SPRING_DATASOURCE_URL
+        value: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+      - key: DB_HOST
+        fromDatabase:
+          name: exam-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: exam-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: exam-db
+          property: database
+      - key: SPRING_DATASOURCE_USERNAME
+        fromDatabase:
+          name: exam-db
+          property: user
+      - key: SPRING_DATASOURCE_PASSWORD
+        fromDatabase:
+          name: exam-db
+          property: password
+      - key: UPLOAD_DIR
+        value: /var/lib/exam/uploads
+    disk:
+      name: exam-uploads
+      mountPath: /var/lib/exam/uploads
+      sizeGB: 1
