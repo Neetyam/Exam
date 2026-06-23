@@ -12,13 +12,9 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Drawing Canvas Styles -->
     <link href="/css/canvas.css" rel="stylesheet">
-    <link href="/css/drawing.css?v=1.0.3" rel="stylesheet">
     <!-- TinyMCE and DOMPurify CDNs for rich text editing and secure HTML sanitization -->
     <script src="https://cdn.jsdelivr.net/npm/tinymce@6/tinymce.min.js" referrerpolicy="origin"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js" referrerpolicy="origin"></script>
-    <!-- Fabric.js and dynamic whiteboard drawing scripts -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
-    <script src="/js/drawing.js?v=1.0.3"></script>
 
     <style>
         :root {
@@ -314,7 +310,7 @@
         .or-text {
             position: relative;
             z-index: 2;
-            background: #f8f9fa;
+            background: #ffffff;
             padding: 0 20px;
             font-weight: 800;
             color: var(--purple-banner);
@@ -354,6 +350,32 @@
             transform: scale(1.5);
             cursor: pointer;
         }
+
+        /* Non-intrusive Toast Notification */
+        .exam-toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #dc3545;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 9999;
+            font-weight: 600;
+            font-size: 0.95rem;
+            opacity: 0;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            transform: translateY(-20px);
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .exam-toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
     </style>
 </head>
 <body>
@@ -363,7 +385,7 @@
     <div class="student-badge">
         🎓 <span th:text="${session.loggedInStudent} + ' (' + ${session.loggedInStudent} + ')'">23CS001 (23CS001)</span>
     </div>
-    <div id="timerDisplay" class="pill-timer">Time Remaining: 00:00:00</div>
+    <div id="timerDisplay" class="pill-timer">Time Remaining: --:--:--</div>
 </header>
 
 <!-- 2. Secondary Info Bar -->
@@ -411,49 +433,43 @@
             </div>
 
             <!-- Questions List -->
-            <div th:each="q, iterStat : ${section.questions}" 
-                 class="question-item"
-                 th:classappend="${q.pairId != null and q.pairId != '' ? 'or-choice-card' : ''}"
-                 th:attr="data-pair-id=${q.pairId}">
-                
-                <div th:if="${q.pairId != null and q.pairId != ''}" class="mb-3 d-flex align-items-center">
-                    <div class="form-check form-switch">
-                        <input class="form-check-input choice-selector" type="radio" 
-                               th:name="'choice-' + ${q.pairId}" 
-                               th:id="'radio-' + ${q.id}"
-                               th:checked="${savedAnswers != null && savedAnswers.containsKey(q.id) && savedAnswers.get(q.id) != ''}"
-                               th:onchange="'toggleORChoice(this, ' + ${q.id} + ', \'' + ${q.pairId} + '\')'">
-                        <label class="form-check-label fw-bold text-primary ms-3" th:for="'radio-' + ${q.id}">Attempt This Option</label>
+            <th:block th:each="q, iterStat : ${section.questions}">
+                <div class="question-item"
+                     th:classappend="${q.pairId != null and q.pairId != '' ? 'or-choice-card' : ''}"
+                     th:attr="data-pair-id=${q.pairId}">
+
+                    <div class="q-num-badge" th:text="${iterStat.count}">1</div>
+                    <div class="question-text">
+                        <span th:text="${q.text}">Give any two examples of data structure.</span>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="badge-pill type-cyan">
+                            ✏️ <span th:text="${q.marks > 2 ? 'Long Answer' : 'Short Answer'}">Short Answer</span>
+                        </div>
+                        <div class="badge-pill marks-yellow">
+                            (<span th:text="${q.marks}">1.0</span> Marks)
+                        </div>
+                    </div>
+
+                    <!-- Input Area -->
+                    <textarea class="answer-textarea answer-area" 
+                              th:attr="data-qid=${q.id}" 
+                              placeholder="Type your detailed answer here. Your progress is automatically saved..." 
+                              th:text="${savedAnswers != null && savedAnswers.containsKey(q.id) ? savedAnswers.get(q.id) : ''}"></textarea>
+                    
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <div class="char-helper" th:id="'char-count-' + ${q.id}">0 characters</div>
+                        <div class="char-helper text-success" th:id="'status-' + ${q.id}"></div>
                     </div>
                 </div>
 
-                <div class="q-num-badge" th:text="${iterStat.count}">1</div>
-                <div class="question-text">
-                    <span th:if="${q.isOptional()}" class="badge bg-warning text-dark me-2">OR</span>
-                    <span th:text="${q.text}">Give any two examples of data structure.</span>
+                <!-- OR Divider between paired questions -->
+                <div th:if="${q.pairId != null and q.pairId != '' and iterStat.index + 1 < section.questions.size() and section.questions[iterStat.index + 1].pairId == q.pairId}" 
+                     class="or-divider">
+                    <span class="or-text">OR</span>
                 </div>
-                
-                <div class="d-flex justify-content-between align-items-center">
-                    <div class="badge-pill type-cyan">
-                        ✏️ <span th:text="${q.marks > 2 ? 'Long Answer' : 'Short Answer'}">Short Answer</span>
-                    </div>
-                    <div class="badge-pill marks-yellow">
-                        (<span th:text="${q.marks}">1.0</span> Marks)
-                    </div>
-                </div>
-
-                <!-- Input Area -->
-                <textarea class="answer-textarea answer-area" 
-                          th:attr="data-qid=${q.id}" 
-                          placeholder="Type your detailed answer here. Your progress is automatically saved..." 
-                          th:text="${savedAnswers != null && savedAnswers.containsKey(q.id) ? savedAnswers.get(q.id) : ''}"
-                          th:disabled="${q.pairId != null and q.pairId != '' and (savedAnswers == null || !savedAnswers.containsKey(q.id) || savedAnswers.get(q.id) == '')}"></textarea>
-                
-                <div class="d-flex justify-content-between align-items-center mt-2">
-                    <div class="char-helper" th:id="'char-count-' + ${q.id}">0 characters</div>
-                    <div class="char-helper text-success" th:id="'status-' + ${q.id}"></div>
-                </div>
-            </div>
+            </th:block>
         </div>
     </main>
 </div>
@@ -481,34 +497,58 @@
 </footer>
 
 <!-- Logic & Metadata -->
+<input type="hidden" id="examId" th:value="${exam.id}">
 <input type="hidden" id="attemptId" th:value="${attemptId}">
 <input type="hidden" id="type" th:value="${type}">
 <input type="hidden" id="remainingSeconds" th:value="${remainingSeconds}">
 <input type="hidden" id="currentIndex" th:value="${currentIndex}">
+<input type="hidden" id="tabTerminationEnabled" th:value="${tabTerminationEnabled}">
 
 <script>
     const attemptId = document.getElementById('attemptId').value;
     const type = document.getElementById('type').value;
-    let remainingSeconds = parseInt(document.getElementById('remainingSeconds').value);
+    // Use sessionStorage if available and > server value (avoids showing 00:00 on section navigation)
+    const serverRemainingSeconds = parseInt(document.getElementById('remainingSeconds').value) || 0;
+    const storedKey = 'exam_remaining_' + attemptId;
+    const storedRemaining = parseInt(sessionStorage.getItem(storedKey) || '0');
+    // Use stored value if it's within ±30s of server value and server returned 0 or stored is fresher
+    let remainingSeconds = (storedRemaining > 0 && serverRemainingSeconds === 0) ? storedRemaining : serverRemainingSeconds;
+    sessionStorage.removeItem(storedKey); // Clear after use
     const currentIndex = parseInt(document.getElementById('currentIndex').value);
+    const tabTerminationEnabled = document.getElementById('tabTerminationEnabled').value === 'true';
     
-    function toggleORChoice(radio, qid, pairId) {
+    function selectORChoice(card) {
+        const pairId = card.getAttribute('data-pair-id');
+        if (!pairId) return;
+        const qid = card.querySelector('.answer-area').getAttribute('data-qid');
         const cards = document.querySelectorAll(`[data-pair-id="${pairId}"]`);
-        cards.forEach(card => {
-            const textarea = card.querySelector('.answer-area');
+        
+        cards.forEach(c => {
+            const textarea = c.querySelector('.answer-area');
             const cardQid = textarea.getAttribute('data-qid');
+            const editorId = 'textarea-' + cardQid;
+            
             if (cardQid == qid) {
-                card.classList.add('active-choice');
-                card.classList.remove('disabled-choice');
+                c.classList.add('active-choice');
+                c.classList.remove('disabled-choice');
                 textarea.disabled = false;
-                textarea.focus();
+                if (window.tinymce && tinymce.get(editorId)) {
+                    tinymce.get(editorId).mode.set('design');
+                }
             } else {
-                card.classList.add('disabled-choice');
-                card.classList.remove('active-choice');
+                c.classList.add('disabled-choice');
+                c.classList.remove('active-choice');
                 textarea.disabled = true;
+                if (window.tinymce && tinymce.get(editorId)) {
+                    tinymce.get(editorId).mode.set('readonly');
+                }
                 if (textarea.value !== "") {
                     textarea.value = "";
+                    if (window.tinymce && tinymce.get(editorId)) {
+                        tinymce.get(editorId).setContent("");
+                    }
                     saveAnswer(cardQid, ""); // Clear partner answer
+                    updateCharCount(textarea);
                 }
             }
         });
@@ -523,22 +563,42 @@
 
         pairs.forEach(pid => {
             const cards = document.querySelectorAll(`[data-pair-id="${pid}"]`);
-            let anySelected = false;
+            let activeCard = null;
             cards.forEach(card => {
-                const radio = card.querySelector('.choice-selector');
-                if (radio && radio.checked) {
-                    anySelected = true;
-                    toggleORChoice(radio, card.querySelector('.answer-area').getAttribute('data-qid'), pid);
+                const textarea = card.querySelector('.answer-area');
+                if (textarea && textarea.value.trim() !== "") {
+                    activeCard = card;
                 }
             });
             
-            // Insert "OR" divider
-            for (let i = 0; i < cards.length - 1; i++) {
-                const divider = document.createElement('div');
-                divider.className = 'or-divider';
-                divider.innerHTML = '<span class="or-text">OR</span>';
-                cards[i].insertAdjacentElement('afterend', divider);
+            if (activeCard) {
+                selectORChoice(activeCard);
+            } else {
+                cards.forEach(card => {
+                    card.classList.remove('active-choice', 'disabled-choice');
+                    const textarea = card.querySelector('.answer-area');
+                    if (textarea) textarea.disabled = false;
+                });
             }
+        });
+
+        // Add click listener to cards for OR question switching
+        document.querySelectorAll('.or-choice-card').forEach(card => {
+            card.addEventListener('click', function(e) {
+                const pairId = card.getAttribute('data-pair-id');
+                const activeCard = document.querySelector(`[data-pair-id="${pairId}"].active-choice`);
+                if (!activeCard || card.classList.contains('disabled-choice')) {
+                    selectORChoice(card);
+                    // Focus textarea or tinyMCE editor if available
+                    const textarea = card.querySelector('.answer-area');
+                    const editorId = 'textarea-' + textarea.getAttribute('data-qid');
+                    if (window.tinymce && tinymce.get(editorId)) {
+                        tinymce.get(editorId).focus();
+                    } else {
+                        textarea.focus();
+                    }
+                }
+            });
         });
     });
 
@@ -547,17 +607,95 @@
         if(remainingSeconds > 0 && !window.isNavigating) return "Exam in progress.";
     };
 
+    window.lastActiveQuestionId = null;
+
+    async function updateActivityStatus(customStatus) {
+        try {
+            const examIdVal = document.getElementById('examId') ? document.getElementById('examId').value : null;
+            const currentIndexVal = document.getElementById('currentIndex') ? parseInt(document.getElementById('currentIndex').value) : 0;
+            const currentSectionLabel = "Q" + (currentIndexVal + 1);
+
+            let activeQNo = 1;
+            if (window.lastActiveQuestionId) {
+                const answerAreas = Array.from(document.querySelectorAll('.answer-area'));
+                const idx = answerAreas.findIndex(ta => ta.getAttribute('data-qid') === window.lastActiveQuestionId);
+                if (idx !== -1) {
+                    activeQNo = idx + 1;
+                }
+            }
+
+            let remSecs = typeof remainingSeconds !== 'undefined' ? remainingSeconds : 0;
+            let hrs = Math.floor(remSecs / 3600);
+            let mins = Math.floor((remSecs % 3600) / 60);
+            let secs = remSecs % 60;
+            let timeString = (hrs < 10 ? "0"+hrs : hrs) + ":" + 
+                             (mins < 10 ? "0"+mins : mins) + ":" + 
+                             (secs < 10 ? "0"+secs : secs);
+
+            const payload = {
+                examId: examIdVal,
+                currentSection: currentSectionLabel,
+                currentQuestionNo: activeQNo,
+                timeRemaining: timeString,
+                status: customStatus || "Active"
+            };
+
+            await fetch('/student/update-activity', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        } catch (e) {
+            console.error("Failed to post activity update:", e);
+        }
+    }
+
+    // Initial activity report on page load
+    updateActivityStatus("Active");
+
+    // Periodic activity reporting every 10 seconds
+    setInterval(() => {
+        updateActivityStatus("Active");
+    }, 10000);
+
     // Auto-save
-    setInterval(saveAllAnswers, 15000);
+    setInterval(saveAllAnswers, 5000);
 
     document.querySelectorAll('.answer-area').forEach(textarea => {
         // Initial char count
         updateCharCount(textarea);
 
         textarea.addEventListener('input', function() {
+            window.lastActiveQuestionId = this.getAttribute('data-qid');
             updateCharCount(this);
             debouncedSave(this.getAttribute('data-qid'), this.value);
+            updateActivityStatus("Active");
         });
+
+        textarea.addEventListener('focus', function() {
+            window.lastActiveQuestionId = this.getAttribute('data-qid');
+            updateActivityStatus("Active");
+        });
+    });
+
+    // Handle save before browser unload using sendBeacon
+    window.addEventListener('unload', function() {
+        if (remainingSeconds > 0 && !window.isNavigating) {
+            document.querySelectorAll('.answer-area').forEach(ta => {
+                const body = {
+                    questionId: ta.getAttribute('data-qid'),
+                    answer: ta.value,
+                    remainingSeconds: remainingSeconds,
+                    currentSection: currentIndex,
+                    currentQuestionId: window.lastActiveQuestionId || ta.getAttribute('data-qid')
+                };
+                if (type === 'paper') body.submissionId = attemptId;
+                else body.attemptId = attemptId;
+
+                const blob = new Blob([JSON.stringify(body)], { type: 'application/json' });
+                navigator.sendBeacon('/api/answer/save', blob);
+            });
+        }
     });
 
     function updateCharCount(textarea) {
@@ -579,7 +717,13 @@
     async function saveAnswer(questionId, answer) {
         const statusEl = document.getElementById(`status-${questionId}`);
         try {
-            const body = { questionId, answer };
+            const body = { 
+                questionId, 
+                answer,
+                remainingSeconds: remainingSeconds,
+                currentSection: currentIndex,
+                currentQuestionId: window.lastActiveQuestionId || questionId
+            };
             if (type === 'paper') body.submissionId = attemptId;
             else body.attemptId = attemptId;
 
@@ -606,13 +750,36 @@
     async function navigateSection(direction) {
         window.isNavigating = true;
         document.querySelectorAll('.btn-footer').forEach(btn => btn.disabled = true);
+        // Save current live countdown to sessionStorage BEFORE navigating
+        // so the next section page never briefly shows 00:00:00
+        if (remainingSeconds > 0) {
+            sessionStorage.setItem(storedKey, remainingSeconds.toString());
+        }
         await saveAllAnswers();
         let newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
         window.location.href = `/student/exam/section/${newIndex}`;
     }
 
+    function formatTime(totalSecs) {
+        const hrs  = Math.floor(totalSecs / 3600);
+        const mins = Math.floor((totalSecs % 3600) / 60);
+        const secs = totalSecs % 60;
+        return (hrs  < 10 ? "0"+hrs  : hrs)  + ":" +
+               (mins < 10 ? "0"+mins : mins) + ":" +
+               (secs < 10 ? "0"+secs : secs);
+    }
+
     function startTimer() {
         const display = document.getElementById('timerDisplay');
+
+        // ── immediately show the correct time (fixes the 00:00:00 flash on load) ──
+        if (remainingSeconds > 0) {
+            display.innerText = "Time Remaining: " + formatTime(remainingSeconds);
+            if (remainingSeconds <= 600) display.style.backgroundColor = "#dc3545";
+        } else {
+            display.innerText = "Time Remaining: 00:00:00";
+        }
+
         const interval = setInterval(function () {
             if (remainingSeconds <= 0) {
                 clearInterval(interval);
@@ -620,16 +787,9 @@
                 autoSubmitExam();
                 return;
             }
-            let hrs = Math.floor(remainingSeconds / 3600);
-            let mins = Math.floor((remainingSeconds % 3600) / 60);
-            let secs = remainingSeconds % 60;
-            display.innerText = "Time Remaining: " +
-                (hrs < 10 ? "0"+hrs : hrs) + ":" + 
-                (mins < 10 ? "0"+mins : mins) + ":" + 
-                (secs < 10 ? "0"+secs : secs);
-
-            if (remainingSeconds <= 600) display.style.backgroundColor = "#dc3545";
             remainingSeconds--;
+            display.innerText = "Time Remaining: " + formatTime(remainingSeconds);
+            if (remainingSeconds <= 600) display.style.backgroundColor = "#dc3545";
         }, 1000);
     }
     startTimer();
@@ -694,6 +854,14 @@
         }, 200);
     });
 
+    function logViolationEvent(eventType) {
+        fetch('/api/exam/log-violation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ eventType: eventType })
+        }).catch(err => console.error("Logging violation failed:", err));
+    }
+
     function handleViolation(reason) {
         if (window.isNavigating || window.isDisplayingModal) return;
 
@@ -701,12 +869,24 @@
         sessionStorage.setItem("examWarningCount", warningCount);
         console.warn("Violation detected: " + reason + ". Warning count: " + warningCount);
 
-        if (warningCount === 1) {
-            window.isDisplayingModal = true;
-            alert("⚠️ WARNING: Do not switch tabs or leave the exam window. This is your ONLY warning. Another violation will terminate your exam instantly.");
-            window.isDisplayingModal = false;
+        let eventType = "TAB_SWITCH";
+        if (reason === "window_blur") {
+            eventType = "FOCUS_LOST";
+        } else if (reason === "window_switch") {
+            eventType = "WINDOW_SWITCH";
+        }
+        logViolationEvent(eventType);
+
+        if (tabTerminationEnabled) {
+            if (warningCount === 1) {
+                window.isDisplayingModal = true;
+                alert("⚠️ WARNING: Do not switch tabs or leave the exam window. This is your ONLY warning. Another violation will terminate your exam instantly.");
+                window.isDisplayingModal = false;
+            } else {
+                terminateExamDueToViolation();
+            }
         } else {
-            terminateExamDueToViolation();
+            showWarningToast("Activity recorded.");
         }
     }
 
@@ -728,202 +908,107 @@
         }
     }
 
-    // ANTI-CHEAT: DISABLE COPY-PASTE & RIGHT-CLICK
-    // 1. Disable Right Click (Context Menu) globally on the exam page
+    // ── LOGGING & TOAST HELPERS ──────────────────────────────────
+    window.showWarningToast = function(message) {
+        let toast = document.getElementById("clipboard-warning-toast");
+        if (!toast) {
+            toast = document.createElement("div");
+            toast.id = "clipboard-warning-toast";
+            toast.className = "exam-toast";
+            document.body.appendChild(toast);
+        }
+        toast.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${message}</span>`;
+        toast.classList.add("show");
+        
+        clearTimeout(window.toastTimeout);
+        window.toastTimeout = setTimeout(() => {
+            toast.classList.remove("show");
+        }, 4000);
+    };
+
+    window.logPasteAttempt = function(questionId, pasteAttempt, sourceType) {
+        fetch('/api/exam/log-paste', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                questionId: questionId,
+                pasteAttempt: pasteAttempt,
+                sourceType: sourceType
+            })
+        }).catch(err => console.error("Logging paste failed:", err));
+    };
+
+    // ── CONTEXT MENU CONTROL ─────────────────────────────────────
+    // Disable right click globally except on answer textareas
     document.addEventListener("contextmenu", function(e) {
+        if (e.target.closest("textarea.answer-area")) {
+            return;
+        }
         e.preventDefault();
     });
 
-    // 2. Disable Paste, Copy, and Cut events on all answer textarea elements
-    document.querySelectorAll("textarea.answer-area").forEach(function(el) {
-        el.addEventListener("paste", function(e) {
+    // ── CENTRAL CLIPBOARD SYSTEM FOR STANDARD TEXTAREAS ──────────
+    document.addEventListener("copy", function(e) {
+        const activeEl = document.activeElement;
+        if (activeEl && activeEl.closest("textarea.answer-area")) {
+            const el = activeEl.closest("textarea.answer-area");
+            const selectedText = el.value.substring(el.selectionStart, el.selectionEnd);
+            if (selectedText) {
+                sessionStorage.setItem("examClipboard", selectedText);
+                sessionStorage.setItem("examClipboardSource", "INTERNAL_EXAM");
+                e.clipboardData.setData('text/plain', selectedText);
+                e.preventDefault();
+            }
+        } else {
+            // Block copying question text or anything outside answers
             e.preventDefault();
-            console.warn("Suspicious Behavior: Paste attempt detected on textarea ID: " + el.getAttribute("data-qid"));
-            alert("Pasting is not allowed. Please type your answer manually.");
-        });
-        
-        el.addEventListener("copy", function(e) {
-            e.preventDefault();
-            console.warn("Suspicious Behavior: Copy attempt detected on textarea ID: " + el.getAttribute("data-qid"));
-            alert("Copying content is disabled during the exam.");
-        });
-
-        el.addEventListener("cut", function(e) {
-            e.preventDefault();
-            console.warn("Suspicious Behavior: Cut attempt detected on textarea ID: " + el.getAttribute("data-qid"));
-            alert("Cutting content is disabled during the exam.");
-        });
+        }
     });
 
-    // 3. Disable Keyboard shortcuts (Ctrl+C, Ctrl+V, Ctrl+X, Cmd+C, Cmd+V, Cmd+X)
-    document.addEventListener("keydown", function(e) {
-        const key = e.key.toLowerCase();
-        const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+    document.addEventListener("cut", function(e) {
+        const activeEl = document.activeElement;
+        if (activeEl && activeEl.closest("textarea.answer-area")) {
+            const el = activeEl.closest("textarea.answer-area");
+            const selectedText = el.value.substring(el.selectionStart, el.selectionEnd);
+            if (selectedText) {
+                sessionStorage.setItem("examClipboard", selectedText);
+                sessionStorage.setItem("examClipboardSource", "INTERNAL_EXAM");
+                e.clipboardData.setData('text/plain', selectedText);
+                
+                const start = el.selectionStart;
+                const end = el.selectionEnd;
+                el.value = el.value.substring(0, start) + el.value.substring(end);
+                el.selectionStart = el.selectionEnd = start;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                e.preventDefault();
+            }
+        } else {
+            e.preventDefault();
+        }
+    });
 
-        const isPaste = (isCtrlOrCmd && key === 'v') || (isCtrlOrCmd && e.shiftKey && key === 'v');
-        const isCopy = isCtrlOrCmd && key === 'c';
-        const isCut = isCtrlOrCmd && key === 'x';
+    document.addEventListener("paste", function(e) {
+        const activeEl = document.activeElement;
+        if (activeEl && activeEl.closest("textarea.answer-area")) {
+            const el = activeEl.closest("textarea.answer-area");
+            const qid = el.getAttribute("data-qid");
+            const pastedText = e.clipboardData.getData('text/plain') || e.clipboardData.getData('text');
+            const examClipboard = sessionStorage.getItem("examClipboard");
+            const examClipboardSource = sessionStorage.getItem("examClipboardSource");
 
-        if (isPaste) {
+            if (examClipboardSource === "INTERNAL_EXAM" && examClipboard && pastedText === examClipboard) {
+                // Allow default paste, log it
+                logPasteAttempt(qid, "Internal Paste Allowed", "INTERNAL_EXAM");
+            } else {
+                e.preventDefault();
+                showWarningToast("External content cannot be pasted during the examination.");
+                logPasteAttempt(qid, "External Paste Attempt blocked", "EXTERNAL");
+            }
+        } else {
             e.preventDefault();
-            console.warn("Suspicious Behavior: Paste keyboard shortcut attempt detected.");
-            alert("Pasting is not allowed. Please type your answer manually.");
-        } else if (isCopy) {
-            e.preventDefault();
-            console.warn("Suspicious Behavior: Copy keyboard shortcut attempt detected.");
-            alert("Copying content is disabled during the exam.");
-        } else if (isCut) {
-            e.preventDefault();
-            console.warn("Suspicious Behavior: Cut keyboard shortcut attempt detected.");
-            alert("Cutting content is disabled during the exam.");
         }
     });
 </script>
-
-<!-- Shape Builder Modal -->
-<div class="modal fade" id="shapeBuilderModal" tabindex="-1" aria-labelledby="shapeBuilderModalLabel" aria-hidden="true" style="z-index: 9999;">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content border-0 rounded-4 shadow-lg">
-      <div class="modal-header text-white py-3" style="background-color: #6f42c1;">
-        <h5 class="modal-title fw-bold" id="shapeBuilderModalLabel"><i class="fas fa-shapes me-2"></i> Insert / Edit Shape</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body p-4" style="background-color: #f8fafc;">
-        <form id="shapeBuilderForm">
-          <div class="row g-4">
-            <!-- Left Side: Customization Form -->
-            <div class="col-md-7">
-              <div class="card border-0 rounded-3 shadow-sm p-3 bg-white mb-3">
-                <h6 class="fw-bold mb-3 text-dark border-bottom pb-2"><i class="fas fa-sliders-h me-1 text-primary"></i> Shape Settings</h6>
-                
-                <div class="row g-3">
-                  <!-- Shape Type -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Shape Type</label>
-                    <select id="shapeType" class="form-select border-2">
-                      <option value="rect">Rectangle</option>
-                      <option value="circle">Circle</option>
-                      <option value="arrow">Arrow (Right)</option>
-                      <option value="line">Line (Horizontal)</option>
-                    </select>
-                  </div>
-                  
-                  <!-- Text Content -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Text Content</label>
-                    <input type="text" id="shapeText" class="form-control border-2" placeholder="e.g. Process, Node, Start">
-                  </div>
-                  
-                  <!-- Fill Color -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Fill Color</label>
-                    <select id="shapeFillColor" class="form-select border-2">
-                      <option value="#ebf8ff">Light Blue</option>
-                      <option value="#e6fffa">Light Teal</option>
-                      <option value="#f0fff4">Light Green</option>
-                      <option value="#fffaf0">Light Orange</option>
-                      <option value="#fff5f5">Light Red</option>
-                      <option value="#faf5ff">Light Purple</option>
-                      <option value="#ffffff">White</option>
-                      <option value="none">Transparent</option>
-                    </select>
-                  </div>
-                  
-                  <!-- Border/Line Color -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Border Color</label>
-                    <select id="shapeBorderColor" class="form-select border-2">
-                      <option value="#3182ce">Blue</option>
-                      <option value="#319795">Teal</option>
-                      <option value="#38a169">Green</option>
-                      <option value="#dd6b20">Orange</option>
-                      <option value="#e53e3e">Red</option>
-                      <option value="#805ad5">Purple</option>
-                      <option value="#2d3748">Dark Gray</option>
-                    </select>
-                  </div>
-
-                  <!-- Border Thickness -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Border Thickness</label>
-                    <select id="shapeBorderThickness" class="form-select border-2">
-                      <option value="1">Thin (1px)</option>
-                      <option value="3" selected>Medium (3px)</option>
-                      <option value="5">Thick (5px)</option>
-                    </select>
-                  </div>
-
-                  <!-- Border Style -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Border Style</label>
-                    <select id="shapeBorderStyle" class="form-select border-2">
-                      <option value="solid">Solid</option>
-                      <option value="dashed">Dashed</option>
-                      <option value="dotted">Dotted</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div class="card border-0 rounded-3 shadow-sm p-3 bg-white">
-                <h6 class="fw-bold mb-3 text-dark border-bottom pb-2"><i class="fas fa-text-height me-1 text-primary"></i> Typography & Sizing</h6>
-                <div class="row g-3">
-                  <!-- Text Font Size -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Font Size</label>
-                    <select id="shapeFontSize" class="form-select border-2">
-                      <option value="12px">Small (12px)</option>
-                      <option value="16px" selected>Medium (16px)</option>
-                      <option value="20px">Large (20px)</option>
-                    </select>
-                  </div>
-
-                  <!-- Text Color -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Font Color</label>
-                    <select id="shapeTextColor" class="form-select border-2">
-                      <option value="#2d3748">Dark Gray</option>
-                      <option value="#ffffff">White</option>
-                      <option value="#3182ce">Blue</option>
-                      <option value="#38a169">Green</option>
-                      <option value="#e53e3e">Red</option>
-                    </select>
-                  </div>
-
-                  <!-- Shape Width -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Width (px)</label>
-                    <input type="number" id="shapeWidth" class="form-control border-2" value="150" min="40" max="800">
-                  </div>
-
-                  <!-- Shape Height -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Height (px)</label>
-                    <input type="number" id="shapeHeight" class="form-control border-2" value="80" min="40" max="600">
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Right Side: Live Interactive Preview -->
-            <div class="col-md-5">
-              <div class="card border-0 rounded-3 shadow-sm p-3 bg-white h-100 d-flex flex-column">
-                <h6 class="fw-bold mb-3 text-dark border-bottom pb-2"><i class="fas fa-eye me-1 text-success"></i> Live Preview</h6>
-                <div class="flex-grow-1 d-flex align-items-center justify-content-center border rounded-3 p-3" style="background-color: #fafbfc; min-height: 200px;" id="shapeLivePreviewContainer">
-                  <!-- Live SVG gets injected here -->
-                </div>
-              </div>
-            </div>
-          </div>
-        </form>
-      </div>
-      <div class="modal-footer border-0 p-3 bg-white justify-content-end gap-2">
-        <button type="button" class="btn btn-light border fw-bold px-4" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" id="btnInsertShapeSubmit" class="btn btn-primary fw-bold px-4" style="background-color: #6f42c1; border-color: #6f42c1;">Insert Shape</button>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- Drawing Canvas JS Engine -->
 <script src="/js/canvas.js"></script>

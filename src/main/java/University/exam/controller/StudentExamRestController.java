@@ -32,8 +32,23 @@ public class StudentExamRestController {
     @Autowired
     private PaperRepository paperRepository;
 
+    @Autowired
+    private StudentRepository studentRepository;
+
+    @Autowired
+    private ExamPasteLogRepository examPasteLogRepository;
+
+    @Autowired
+    private StudentActiveSessionRepository studentActiveSessionRepository;
+
+    @Autowired
+    private ExamViolationRepository examViolationRepository;
+
+    @Autowired
+    private University.exam.service.StudentExamActivityService studentExamActivityService;
+
     @GetMapping("/exam/{id}/status")
-    public ResponseEntity<?> getExamStatus(@PathVariable Long id, @RequestParam(required = false) String type) {
+    public ResponseEntity<?> getExamStatus(@PathVariable("id") Long id, @RequestParam(name = "type", required = false) String type) {
         String status = "DRAFT";
         if ("exam".equals(type)) {
             Optional<Exam> examOpt = examRepository.findById(id);
@@ -64,16 +79,32 @@ public class StudentExamRestController {
 
 
     @GetMapping("/exam/{id}")
-    public ResponseEntity<?> getExamDetails(@PathVariable Long id) {
+    public ResponseEntity<?> getExamDetails(@PathVariable("id") Long id) {
         return examRepository.findById(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @GetMapping("/exam/{id}/questions")
-    public ResponseEntity<?> getShuffledQuestions(@PathVariable Long id, @RequestParam(required = false) String type, HttpSession session) {
+    public ResponseEntity<?> getShuffledQuestions(@PathVariable("id") Long id, @RequestParam(name = "type", required = false) String type, HttpSession session) {
         String enrollmentNo = (String) session.getAttribute("loggedInStudent");
         if (enrollmentNo == null) return ResponseEntity.status(401).body("Unauthorized");
+
+        Student student = studentRepository.findByEnrollmentNo(enrollmentNo).orElse(null);
+        String studentSem = student != null ? student.getSemester() : "Semester 3";
+
+        String examSem = "Semester 3";
+        if ("paper".equals(type)) {
+            Paper paper = paperRepository.findById(id).orElse(null);
+            if (paper != null) examSem = paper.getSemester();
+        } else {
+            Exam exam = examRepository.findById(id).orElse(null);
+            if (exam != null) examSem = exam.getSemester();
+        }
+
+        if (!Student.matchesSemester(studentSem, examSem)) {
+            return ResponseEntity.status(403).body("Access Denied. This examination is not assigned to your semester.");
+        }
 
         List<Question> questions = "paper".equals(type) ? 
             questionRepository.findByPaperId(id) : questionRepository.findByExamId(id);
@@ -197,11 +228,22 @@ public class StudentExamRestController {
             }
         }
 
+        // Read tracking parameters
+        Integer remainingSeconds = payload.get("remainingSeconds") != null ? Integer.valueOf(payload.get("remainingSeconds").toString()) : null;
+        Integer currentSection = payload.get("currentSection") != null ? Integer.valueOf(payload.get("currentSection").toString()) : null;
+        Long currentQuestionId = payload.get("currentQuestionId") != null ? Long.valueOf(payload.get("currentQuestionId").toString()) : null;
+
         Answer answer;
         if (attemptId != null) {
             ExamAttempt attempt = examAttemptRepository.findById(attemptId).orElse(null);
             if (attempt == null || "Submitted".equals(attempt.getStatus())) return ResponseEntity.badRequest().body("Invalid attempt");
             
+            if (remainingSeconds != null) attempt.setRemainingTimeSeconds(remainingSeconds);
+            if (currentSection != null) attempt.setLastActiveSection(currentSection);
+            if (currentQuestionId != null) attempt.setLastActiveQuestionId(currentQuestionId);
+            attempt.setLastSavedAt(LocalDateTime.now());
+            examAttemptRepository.save(attempt);
+
             Question question = questionRepository.findById(questionId).orElse(null);
             answer = answerRepository.findFirstByExamAttemptIdAndQuestionIdOrderByUpdatedAtDesc(attemptId, questionId)
                     .orElseGet(() -> {
@@ -216,6 +258,12 @@ public class StudentExamRestController {
             Submission submission = submissionRepository.findById(submissionId).orElse(null);
             if (submission == null || "Submitted".equals(submission.getStatus())) return ResponseEntity.badRequest().body("Invalid submission");
             
+            if (remainingSeconds != null) submission.setRemainingTimeSeconds(remainingSeconds);
+            if (currentSection != null) submission.setLastActiveSection(currentSection);
+            if (currentQuestionId != null) submission.setLastActiveQuestionId(currentQuestionId);
+            submission.setLastSavedAt(LocalDateTime.now());
+            submissionRepository.save(submission);
+
             Question question = questionRepository.findById(questionId).orElse(null);
             answer = answerRepository.findFirstBySubmissionIdAndQuestionIdOrderByUpdatedAtDesc(submissionId, questionId)
                     .orElseGet(() -> {
@@ -237,6 +285,36 @@ public class StudentExamRestController {
         return ResponseEntity.ok(Collections.singletonMap("status", "saved"));
     }
 
+    @PostMapping("/exam/log-paste")
+    public ResponseEntity<?> logPasteAttempt(@RequestBody Map<String, Object> payload, HttpSession session) {
+        String enrollmentNo = (String) session.getAttribute("loggedInStudent");
+        if (enrollmentNo == null) return ResponseEntity.status(401).body("Unauthorized");
+
+        Long questionId = payload.get("questionId") != null ? Long.valueOf(payload.get("questionId").toString()) : null;
+        String pasteAttempt = payload.get("pasteAttempt") != null ? payload.get("pasteAttempt").toString() : "";
+        String sourceType = payload.get("sourceType") != null ? payload.get("sourceType").toString() : "";
+
+        ExamPasteLog log = new ExamPasteLog(enrollmentNo, questionId, LocalDateTime.now(), pasteAttempt, sourceType);
+        examPasteLogRepository.save(log);
+
+        return ResponseEntity.ok(Collections.singletonMap("status", "logged"));
+    }
+
+    @PostMapping("/exam/log-violation")
+    public ResponseEntity<?> logViolation(@RequestBody Map<String, Object> payload, HttpSession session) {
+        String enrollmentNo = (String) session.getAttribute("loggedInStudent");
+        if (enrollmentNo == null) return ResponseEntity.status(401).body("Unauthorized");
+
+        String eventType = payload.get("eventType") != null ? payload.get("eventType").toString() : "UNKNOWN";
+        Long examId = (Long) session.getAttribute("currentExamId");
+        String type = (String) session.getAttribute("currentExamType");
+
+        ExamViolation violation = new ExamViolation(enrollmentNo, LocalDateTime.now(), eventType, examId, type);
+        examViolationRepository.save(violation);
+
+        return ResponseEntity.ok(Collections.singletonMap("status", "logged"));
+    }
+
     @PostMapping("/exam/submit")
     public ResponseEntity<?> submitExam(@RequestBody Map<String, Object> payload, HttpSession session) {
         String enrollmentNo = (String) session.getAttribute("loggedInStudent");
@@ -245,20 +323,124 @@ public class StudentExamRestController {
         Long attemptId = payload.get("attemptId") != null ? Long.valueOf(payload.get("attemptId").toString()) : null;
         Long submissionId = payload.get("submissionId") != null ? Long.valueOf(payload.get("submissionId").toString()) : null;
 
+        Student student = studentRepository.findByEnrollmentNo(enrollmentNo).orElse(null);
+        String studentSem = student != null ? student.getSemester() : "Semester 3";
+
+        String examSem = "Semester 3";
+        if (attemptId != null) {
+            ExamAttempt attempt = examAttemptRepository.findById(attemptId).orElse(null);
+            if (attempt != null && attempt.getExam() != null) {
+                examSem = attempt.getExam().getSemester();
+            }
+        } else if (submissionId != null) {
+            Submission submission = submissionRepository.findById(submissionId).orElse(null);
+            if (submission != null && submission.getPaper() != null) {
+                examSem = submission.getPaper().getSemester();
+            }
+        }
+
+        if (!Student.matchesSemester(studentSem, examSem)) {
+            return ResponseEntity.status(403).body("Access Denied. This examination is not assigned to your semester.");
+        }
+
         if (attemptId != null) {
             ExamAttempt attempt = examAttemptRepository.findById(attemptId).orElse(null);
             if (attempt != null && !"Submitted".equals(attempt.getStatus())) {
+                // Auto-create missing/skipped Answers with 0 marks
+                if (attempt.getExam() != null) {
+                    List<Question> questions = questionRepository.findByExamId(attempt.getExam().getId());
+                    List<Answer> existingAnswers = answerRepository.findByExamAttemptId(attemptId);
+                    Set<Long> answeredQuestionIds = new java.util.HashSet<>();
+                    if (existingAnswers != null) {
+                        for (Answer ans : existingAnswers) {
+                            if (ans.getQuestion() != null) {
+                                answeredQuestionIds.add(ans.getQuestion().getId());
+                            }
+                        }
+                    }
+                    if (questions != null) {
+                        for (Question q : questions) {
+                            if (!answeredQuestionIds.contains(q.getId())) {
+                                Answer ans = new Answer();
+                                ans.setExamAttempt(attempt);
+                                ans.setQuestion(q);
+                                ans.setQuestionText(q.getText());
+                                ans.setStudentAnswer("");
+                                ans.setMaxMarks(q.getMarks() != null ? q.getMarks() : 0.0);
+                                ans.setMarksObtained(0.0);
+                                ans.setUpdatedAt(LocalDateTime.now());
+                                answerRepository.save(ans);
+                            }
+                        }
+                    }
+                }
+                
                 attempt.setStatus("Submitted");
                 attempt.setEndTime(LocalDateTime.now());
                 examAttemptRepository.save(attempt);
+
+                studentActiveSessionRepository.findByStudentIdAndStatus(enrollmentNo, "ACTIVE").ifPresent(activeSession -> {
+                    activeSession.setStatus("COMPLETED");
+                    activeSession.setLogoutTime(LocalDateTime.now());
+                    studentActiveSessionRepository.save(activeSession);
+                });
+
+                try {
+                    studentExamActivityService.updateActivity(enrollmentNo, attempt.getExam() != null ? attempt.getExam().getId() : null, null, null, "00:00:00", "Submitted");
+                } catch (Exception e) {
+                    System.err.println("Failed to update activity to Submitted: " + e.getMessage());
+                }
+
                 return ResponseEntity.ok(Collections.singletonMap("status", "submitted"));
             }
         } else if (submissionId != null) {
             Submission submission = submissionRepository.findById(submissionId).orElse(null);
             if (submission != null && !"Submitted".equals(submission.getStatus())) {
+                // Auto-create missing/skipped Answers with 0 marks
+                if (submission.getPaper() != null) {
+                    List<Question> questions = questionRepository.findByPaperId(submission.getPaper().getId());
+                    List<Answer> existingAnswers = answerRepository.findBySubmissionId(submissionId);
+                    Set<Long> answeredQuestionIds = new java.util.HashSet<>();
+                    if (existingAnswers != null) {
+                        for (Answer ans : existingAnswers) {
+                            if (ans.getQuestion() != null) {
+                                answeredQuestionIds.add(ans.getQuestion().getId());
+                            }
+                        }
+                    }
+                    if (questions != null) {
+                        for (Question q : questions) {
+                            if (!answeredQuestionIds.contains(q.getId())) {
+                                Answer ans = new Answer();
+                                ans.setSubmission(submission);
+                                ans.setQuestion(q);
+                                ans.setQuestionText(q.getText());
+                                ans.setStudentAnswer("");
+                                ans.setMaxMarks(q.getMarks() != null ? q.getMarks() : 0.0);
+                                ans.setMarksObtained(0.0);
+                                ans.setUpdatedAt(LocalDateTime.now());
+                                answerRepository.save(ans);
+                            }
+                        }
+                    }
+                }
+
                 submission.setStatus("Submitted");
                 submission.setSubmittedAt(LocalDateTime.now());
                 submissionRepository.save(submission);
+
+                studentActiveSessionRepository.findByStudentIdAndStatus(enrollmentNo, "ACTIVE").ifPresent(activeSession -> {
+                    activeSession.setStatus("COMPLETED");
+                    activeSession.setLogoutTime(LocalDateTime.now());
+                    studentActiveSessionRepository.save(activeSession);
+                });
+
+                try {
+                    studentExamActivityService.updateActivity(enrollmentNo, submission.getPaper() != null ? submission.getPaper().getId() : null, null, null, "00:00:00", "Submitted");
+                } catch (Exception e) {
+                    System.err.println("Failed to update activity to Submitted: " + e.getMessage());
+                }
+
                 return ResponseEntity.ok(Collections.singletonMap("status", "submitted"));
             }
         }

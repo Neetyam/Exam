@@ -31,8 +31,28 @@ public class Result {
     private Double totalMarks;
     private String resultStatus;
     private LocalDateTime evaluatedAt = LocalDateTime.now();
+    private String grade;
+    private Double percentage;
+    private String terminationReason;
+    private LocalDateTime terminatedAt;
+    private Integer rollNo;
 
     public Result() {}
+
+    public String getGrade() { return grade; }
+    public void setGrade(String grade) { this.grade = grade; }
+
+    public Double getPercentage() { return percentage; }
+    public void setPercentage(Double percentage) { this.percentage = percentage; }
+
+    public String getTerminationReason() { return terminationReason; }
+    public void setTerminationReason(String terminationReason) { this.terminationReason = terminationReason; }
+
+    public LocalDateTime getTerminatedAt() { return terminatedAt; }
+    public void setTerminatedAt(LocalDateTime terminatedAt) { this.terminatedAt = terminatedAt; }
+
+    public Integer getRollNo() { return rollNo; }
+    public void setRollNo(Integer rollNo) { this.rollNo = rollNo; }
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }

@@ -11,7 +11,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js" referrerpolicy="origin"></script>
     <!-- FontAwesome for canvas toolbar icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Drawing Canvas Styles -->
+    <!-- Drawing Canvas & Rich Editor Styles -->
+    <link href="/css/canvas.css" rel="stylesheet">
     <link href="/css/drawing.css?v=1.0.3" rel="stylesheet">
     <!-- Fabric.js and dynamic whiteboard drawing scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
@@ -73,6 +74,7 @@
     </div>
 </div>
 
+<input type="hidden" id="examId" th:value="${paper.id}">
 <input type="hidden" id="submissionId" th:value="${submissionId}">
 <input type="hidden" id="remainingSeconds" th:value="${remainingSeconds}">
 
@@ -80,23 +82,70 @@
     const submissionId = document.getElementById('submissionId').value;
     let remainingSeconds = parseInt(document.getElementById('remainingSeconds').value);
     const textarea = document.getElementById('answerTextarea');
+    window.isNavigating = false;
     
-    window.onbeforeunload = function() { if(remainingSeconds > 0) return "Exam in progress!"; };
+    window.onbeforeunload = function() { if(remainingSeconds > 0 && !window.isNavigating) return "Exam in progress!"; };
+
+    async function updateActivityStatus(customStatus) {
+        try {
+            const examIdVal = document.getElementById('examId') ? document.getElementById('examId').value : null;
+
+            let remSecs = typeof remainingSeconds !== 'undefined' ? remainingSeconds : 0;
+            let hrs = Math.floor(remSecs / 3600);
+            let mins = Math.floor((remSecs % 3600) / 60);
+            let secs = remSecs % 60;
+            let timeString = (hrs < 10 ? "0"+hrs : hrs) + ":" + 
+                             (mins < 10 ? "0"+mins : mins) + ":" + 
+                             (secs < 10 ? "0"+secs : secs);
+
+            const payload = {
+                examId: examIdVal,
+                currentSection: "Q1",
+                currentQuestionNo: 1,
+                timeRemaining: timeString,
+                status: customStatus || "Active"
+            };
+
+            await fetch('/student/update-activity', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        } catch (e) {
+            console.error("Failed to post activity update:", e);
+        }
+    }
 
     // Auto-save logic
-    setInterval(saveAnswer, 15000); 
+    setInterval(saveAnswer, 5000); 
     textarea.addEventListener('input', debounce(saveAnswer, 3000));
+    textarea.addEventListener('input', function() {
+        updateActivityStatus("Active");
+    });
 
     async function saveAnswer() {
         const statusEl = document.getElementById('saveStatus');
         statusEl.innerHTML = '<span class="status-saving">Saving progress...</span>';
         
+        const promises = [];
+        promises.push(fetch('/api/answer/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                submissionId, 
+                answer: textarea.value,
+                remainingSeconds: remainingSeconds,
+                currentSection: 0,
+                currentQuestionId: null
+            })
+        }));
+
+        if (window.saveAllCanvasesImmediately) {
+            promises.push(window.saveAllCanvasesImmediately());
+        }
+        
         try {
-            await fetch('/api/answer/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ submissionId, answer: textarea.value })
-            });
+            await Promise.all(promises);
             statusEl.innerHTML = '<span class="status-saved">✓ Progress Auto-saved</span>';
             setTimeout(() => { statusEl.innerHTML = ''; }, 2000);
         } catch (error) {}
@@ -132,6 +181,7 @@
     function autoSubmitExam() { alert("Time up!"); submitExam(); }
 
     async function submitExam() {
+        window.isNavigating = true;
         textarea.disabled = true;
         await saveAnswer();
         try {
@@ -140,157 +190,36 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ submissionId })
             });
-            if (response.ok) window.location.href = '/student/exam/dashboard';
+            if (response.ok) window.location.href = '/student/exam/feedback';
         } catch (error) {}
     }
 
-    window.onload = startTimer;
+    window.addEventListener('unload', function() {
+        if (remainingSeconds > 0 && !window.isNavigating) {
+            const body = {
+                submissionId: submissionId,
+                answer: textarea.value,
+                remainingSeconds: remainingSeconds,
+                currentSection: 0,
+                currentQuestionId: null
+            };
+            const blob = new Blob([JSON.stringify(body)], { type: 'application/json' });
+            navigator.sendBeacon('/api/answer/save', blob);
+        }
+    });
+
+    window.onload = function() {
+        startTimer();
+        try {
+            updateActivityStatus("Active");
+            setInterval(() => {
+                updateActivityStatus("Active");
+            }, 10000);
+        } catch (e) {
+            console.error(e);
+        }
+    };
 </script>
-
-<!-- Shape Builder Modal -->
-<div class="modal fade" id="shapeBuilderModal" tabindex="-1" aria-labelledby="shapeBuilderModalLabel" aria-hidden="true" style="z-index: 9999;">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content border-0 rounded-4 shadow-lg">
-      <div class="modal-header text-white py-3" style="background-color: #6f42c1;">
-        <h5 class="modal-title fw-bold" id="shapeBuilderModalLabel"><i class="fas fa-shapes me-2"></i> Insert / Edit Shape</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body p-4" style="background-color: #f8fafc;">
-        <form id="shapeBuilderForm">
-          <div class="row g-4">
-            <!-- Left Side: Customization Form -->
-            <div class="col-md-7">
-              <div class="card border-0 rounded-3 shadow-sm p-3 bg-white mb-3">
-                <h6 class="fw-bold mb-3 text-dark border-bottom pb-2"><i class="fas fa-sliders-h me-1 text-primary"></i> Shape Settings</h6>
-                
-                <div class="row g-3">
-                  <!-- Shape Type -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Shape Type</label>
-                    <select id="shapeType" class="form-select border-2">
-                      <option value="rect">Rectangle</option>
-                      <option value="circle">Circle</option>
-                      <option value="arrow">Arrow (Right)</option>
-                      <option value="line">Line (Horizontal)</option>
-                    </select>
-                  </div>
-                  
-                  <!-- Text Content -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Text Content</label>
-                    <input type="text" id="shapeText" class="form-control border-2" placeholder="e.g. Process, Node, Start">
-                  </div>
-                  
-                  <!-- Fill Color -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Fill Color</label>
-                    <select id="shapeFillColor" class="form-select border-2">
-                      <option value="#ebf8ff">Light Blue</option>
-                      <option value="#e6fffa">Light Teal</option>
-                      <option value="#f0fff4">Light Green</option>
-                      <option value="#fffaf0">Light Orange</option>
-                      <option value="#fff5f5">Light Red</option>
-                      <option value="#faf5ff">Light Purple</option>
-                      <option value="#ffffff">White</option>
-                      <option value="none">Transparent</option>
-                    </select>
-                  </div>
-                  
-                  <!-- Border/Line Color -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Border Color</label>
-                    <select id="shapeBorderColor" class="form-select border-2">
-                      <option value="#3182ce">Blue</option>
-                      <option value="#319795">Teal</option>
-                      <option value="#38a169">Green</option>
-                      <option value="#dd6b20">Orange</option>
-                      <option value="#e53e3e">Red</option>
-                      <option value="#805ad5">Purple</option>
-                      <option value="#2d3748">Dark Gray</option>
-                    </select>
-                  </div>
-
-                  <!-- Border Thickness -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Border Thickness</label>
-                    <select id="shapeBorderThickness" class="form-select border-2">
-                      <option value="1">Thin (1px)</option>
-                      <option value="3" selected>Medium (3px)</option>
-                      <option value="5">Thick (5px)</option>
-                    </select>
-                  </div>
-
-                  <!-- Border Style -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Border Style</label>
-                    <select id="shapeBorderStyle" class="form-select border-2">
-                      <option value="solid">Solid</option>
-                      <option value="dashed">Dashed</option>
-                      <option value="dotted">Dotted</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div class="card border-0 rounded-3 shadow-sm p-3 bg-white">
-                <h6 class="fw-bold mb-3 text-dark border-bottom pb-2"><i class="fas fa-text-height me-1 text-primary"></i> Typography & Sizing</h6>
-                <div class="row g-3">
-                  <!-- Text Font Size -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Font Size</label>
-                    <select id="shapeFontSize" class="form-select border-2">
-                      <option value="12px">Small (12px)</option>
-                      <option value="16px" selected>Medium (16px)</option>
-                      <option value="20px">Large (20px)</option>
-                    </select>
-                  </div>
-
-                  <!-- Text Color -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Font Color</label>
-                    <select id="shapeTextColor" class="form-select border-2">
-                      <option value="#2d3748">Dark Gray</option>
-                      <option value="#ffffff">White</option>
-                      <option value="#3182ce">Blue</option>
-                      <option value="#38a169">Green</option>
-                      <option value="#e53e3e">Red</option>
-                    </select>
-                  </div>
-
-                  <!-- Shape Width -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Width (px)</label>
-                    <input type="number" id="shapeWidth" class="form-control border-2" value="150" min="40" max="800">
-                  </div>
-
-                  <!-- Shape Height -->
-                  <div class="col-sm-6">
-                    <label class="form-label small fw-bold text-muted">Height (px)</label>
-                    <input type="number" id="shapeHeight" class="form-control border-2" value="80" min="40" max="600">
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Live Interactive Preview -->
-            <div class="col-md-5">
-              <div class="card border-0 rounded-3 shadow-sm p-3 bg-white h-100 d-flex flex-column">
-                <h6 class="fw-bold mb-3 text-dark border-bottom pb-2"><i class="fas fa-eye me-1 text-success"></i> Live Preview</h6>
-                <div class="flex-grow-1 d-flex align-items-center justify-content-center border rounded-3 p-3" style="background-color: #fafbfc; min-height: 200px;" id="shapeLivePreviewContainer">
-                  <!-- Live SVG gets injected here -->
-                </div>
-              </div>
-            </div>
-          </div>
-        </form>
-      </div>
-      <div class="modal-footer border-0 p-3 bg-white justify-content-end gap-2">
-        <button type="button" class="btn btn-light border fw-bold px-4" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" id="btnInsertShapeSubmit" class="btn btn-primary fw-bold px-4" style="background-color: #6f42c1; border-color: #6f42c1;">Insert Shape</button>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- Drawing Canvas JS Engine -->
 <script src="/js/canvas.js"></script>

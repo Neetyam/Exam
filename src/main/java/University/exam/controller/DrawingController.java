@@ -103,9 +103,9 @@ public class DrawingController {
 
     @GetMapping("/get")
     public ResponseEntity<?> getDrawing(
-            @RequestParam(required = false) Long attemptId,
-            @RequestParam(required = false) Long submissionId,
-            @RequestParam Long questionId,
+            @RequestParam(name = "attemptId", required = false) Long attemptId,
+            @RequestParam(name = "submissionId", required = false) Long submissionId,
+            @RequestParam("questionId") Long questionId,
             HttpSession session) {
         
         String enrollmentNo = (String) session.getAttribute("loggedInStudent");

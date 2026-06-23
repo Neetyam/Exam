@@ -11,6 +11,7 @@ public class Exam {
 
     private String examName;
     private String course;
+    @Column(name = "target_semester")
     private String semester;
     private String subject;
     private Double totalMarks;

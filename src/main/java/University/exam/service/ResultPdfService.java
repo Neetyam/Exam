@@ -40,16 +40,16 @@ public class ResultPdfService {
             }
         }
 
-        // Table with exactly 4 columns: Roll No, GR No, Student Name, Marks
-        PdfPTable table = new PdfPTable(4);
+        // Table with 6 columns: Roll No, GR No, Student Name, Marks, Status, Remarks
+        PdfPTable table = new PdfPTable(6);
         table.setWidthPercentage(100);
-        table.setWidths(new float[]{1.5f, 2.5f, 4.5f, 1.5f});
+        table.setWidths(new float[]{1.2f, 2.0f, 3.8f, 1.5f, 2.0f, 3.0f});
 
         Font tableHeaderFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10);
-        Font tableBodyFont = FontFactory.getFont(FontFactory.HELVETICA, 10);
+        Font tableBodyFont = FontFactory.getFont(FontFactory.HELVETICA, 9);
 
         // Header cells
-        String[] headers = {"Roll No", "GR No", "Student Name", marksHeader};
+        String[] headers = {"Roll No", "GR No", "Student Name", marksHeader, "Status", "Remarks"};
         for (String header : headers) {
             PdfPCell cell = new PdfPCell(new Phrase(header, tableHeaderFont));
             cell.setBackgroundColor(new java.awt.Color(240, 240, 240));
@@ -86,22 +86,24 @@ public class ResultPdfService {
             String sName = r.getStudentName() != null ? r.getStudentName().toUpperCase() : "-";
 
             String marksStr = "-";
-            if (r.getObtainedMarks() != null) {
-                double val = r.getObtainedMarks();
-                if (val % 1 == 0) {
-                    marksStr = String.valueOf((int) val);
-                } else {
-                    marksStr = String.valueOf(val);
-                }
+            String statusStr = r.getResultStatus() != null ? r.getResultStatus() : "PENDING";
+            String remarksStr = "";
+
+            if ("TERMINATED".equals(statusStr)) {
+                marksStr = "0 / " + (r.getTotalMarks() != null ? String.valueOf(r.getTotalMarks().intValue()) : "100");
+                remarksStr = r.getTerminationReason() != null ? r.getTerminationReason() : "Exam terminated before submission.";
+            } else if ("DISQUALIFIED".equals(statusStr)) {
+                marksStr = "0 / " + (r.getTotalMarks() != null ? String.valueOf(r.getTotalMarks().intValue()) : "100");
+                remarksStr = r.getTerminationReason() != null ? r.getTerminationReason() : "Exam terminated due to proctoring violation.";
+            } else if ("ABSENT".equals(statusStr)) {
+                marksStr = "0 / " + (r.getTotalMarks() != null ? String.valueOf(r.getTotalMarks().intValue()) : "100");
+                remarksStr = "Absent from examination.";
             } else {
-                String status = r.getResultStatus();
-                if ("ABSENT".equalsIgnoreCase(status) || "AB".equalsIgnoreCase(status)) {
-                    marksStr = "AB";
-                } else if ("UFM".equalsIgnoreCase(status)) {
-                    marksStr = "UFM";
-                } else {
-                    marksStr = "AB"; // Default fallback in university marksheets
-                }
+                double obtained = r.getObtainedMarks() != null ? r.getObtainedMarks() : 0.0;
+                double total = r.getTotalMarks() != null ? r.getTotalMarks() : 100.0;
+                marksStr = ((obtained % 1 == 0) ? String.valueOf((int) obtained) : String.valueOf(obtained))
+                        + " / " + ((total % 1 == 0) ? String.valueOf((int) total) : String.valueOf(total));
+                remarksStr = "PASSED".equals(statusStr) ? "Passed" : ("FAILED".equals(statusStr) ? "Failed" : "");
             }
 
             // Cell 1: Roll No (Centered)
@@ -136,6 +138,24 @@ public class ResultPdfService {
             cell.setBorderColor(new java.awt.Color(180, 180, 180));
             cell.setBorderWidth(0.5f);
             cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+            cell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            cell.setPadding(5);
+            table.addCell(cell);
+
+            // Cell 5: Status (Centered)
+            cell = new PdfPCell(new Phrase(statusStr, tableBodyFont));
+            cell.setBorderColor(new java.awt.Color(180, 180, 180));
+            cell.setBorderWidth(0.5f);
+            cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+            cell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            cell.setPadding(5);
+            table.addCell(cell);
+
+            // Cell 6: Remarks (Left-aligned)
+            cell = new PdfPCell(new Phrase(remarksStr, tableBodyFont));
+            cell.setBorderColor(new java.awt.Color(180, 180, 180));
+            cell.setBorderWidth(0.5f);
+            cell.setHorizontalAlignment(Element.ALIGN_LEFT);
             cell.setVerticalAlignment(Element.ALIGN_MIDDLE);
             cell.setPadding(5);
             table.addCell(cell);

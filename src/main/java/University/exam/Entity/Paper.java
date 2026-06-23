@@ -39,6 +39,10 @@ public class Paper {
     @jakarta.persistence.Column(name = "manual_content", columnDefinition = "TEXT")
     private String manualContent;
 
+    @jakarta.persistence.ManyToOne
+    @jakarta.persistence.JoinColumn(name = "admin_id")
+    private Admin admin;
+
     public Paper() {}
 
 
@@ -80,5 +84,14 @@ public class Paper {
     public void setPublishedTime(LocalDateTime publishedTime) { this.publishedTime = publishedTime; }
     public LocalDateTime getActivatedTime() { return activatedTime; }
     public void setActivatedTime(LocalDateTime activatedTime) { this.activatedTime = activatedTime; }
+
+    @jakarta.persistence.Column(name = "exam_date")
+    private java.time.LocalDate examDate;
+
+    public java.time.LocalDate getExamDate() { return examDate; }
+    public void setExamDate(java.time.LocalDate examDate) { this.examDate = examDate; }
+
+    public Admin getAdmin() { return admin; }
+    public void setAdmin(Admin admin) { this.admin = admin; }
 }
 
