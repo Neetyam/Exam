@@ -1,0 +1,5 @@
+# nixpacks.toml
+# Ensure Nixpacks uses JDK 21 to build the project.
+
+[variables]
+NIXPACKS_JDK_VERSION = "21"
